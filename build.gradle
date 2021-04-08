@@ -1,0 +1,93 @@
+plugins {
+    id 'org.springframework.boot' version '2.4.4'
+    id 'io.spring.dependency-management' version '1.0.11.RELEASE'
+    id 'java'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '11'
+def jaxbClassesDir = "${buildDir}/classes/jaxb"
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    jaxb
+}
+
+ext{
+    pkg = "com.example.demosoap"
+
+    jaxbTasks = [
+            jaxbImpresion: [url: "http://pruebas.gnpventamasiva.com.mx/WSAUTos2015-7/cotizadorgnp.asmx?wsdl", package: "${pkg}.wsdl", auto: true]
+    ]
+}
+
+jaxbTasks.each { n, t ->
+    tasks.create(name: n) {
+        ext.sourcesDir = "${buildDir}/generated-sources/jaxb/${name}"
+        ext.classesDir = jaxbClassesDir
+        ext.schema = t.url
+        outputs.dir classesDir
+
+        doLast() {
+            project.ant {
+                taskdef name: "xjc", classname: "com.sun.tools.xjc.XJCTask", classpath: configurations.jaxb.asPath
+                mkdir(dir: sourcesDir)
+                mkdir(dir: classesDir)
+
+                xjc(destdir: sourcesDir, schema: schema, package: t.package) {
+                    arg(value: "-wsdl")
+                    if (t.auto) {
+                        arg(value: "-XautoNameResolution")
+                    }
+                    if (t.bindings) {
+                        binding(dir: "bindings") {
+                            include(name: t.bindings)
+                        }
+                    }
+                    produces(dir: sourcesDir, includes: "**/*.java")
+                }
+
+                javac(destdir: classesDir, source: 11, target: 11, debug: true, debugLevel: "lines,vars,source",
+                        classpath: configurations.jaxb.asPath, includeAntRuntime: false) {
+                    src(path: sourcesDir)
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    implementation 'org.springframework.boot:spring-boot-starter-web-services'
+
+    implementation 'commons-lang:commons-lang:2.6'
+    compileOnly 'org.apache.httpcomponents:httpclient:4.5'
+    compileOnly 'javax.ws.rs:javax.ws.rs-api:2.1.1'
+    compileOnly 'org.projectlombok:lombok:1.18.10'
+    annotationProcessor 'org.projectlombok:lombok:1.18.10'
+
+    implementation group: 'javax.xml', name: 'jaxb-impl', version: '2.1'
+    implementation group: 'javax.xml.bind', name: 'jaxb-api', version: '2.1'
+
+    jaxbTasks.each { name, t ->
+        implementation files(jaxbClassesDir, {
+            builtBy name
+        })
+    }
+
+    jaxb "com.sun.xml.bind:jaxb-xjc:2.1.7"
+}
+
+test {
+    useJUnitPlatform()
+}
+
+tasks.named('wrapper') {
+    distributionType = Wrapper.DistributionType.ALL
+    gradleVersion = '6.4.1'
+}
